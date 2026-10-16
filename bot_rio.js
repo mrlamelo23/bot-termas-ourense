@@ -2,11 +2,13 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
 const admin = require('firebase-admin');
-const https = require('https'); // <-- Añadido para gestionar certificados
+const https = require('https');
+const { wrapper } = require('axios-cookiejar-support');
+const { CookieJar } = require('tough-cookie');
 
 async function actualizarNivelRio() {
   try {
-    console.log("🌊 Iniciando lectura del SAIH...");
+    console.log("🌊 Iniciando lectura del SAIH con soporte de cookies...");
 
     if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
       throw new Error("La variable de entorno FIREBASE_SERVICE_ACCOUNT no está definida.");
@@ -25,17 +27,20 @@ async function actualizarNivelRio() {
     }
 
     const db = admin.database();
-
     const saihUrl = 'https://saih.chminosil.es/index.php?url=/datos/ficha/estacion:N010/area:HID'; 
 
-    // Aquí le decimos al bot que ignore el error del certificado del gobierno
-    const response = await axios.get(saihUrl, {
+    // Configuramos el cliente web con el "tarro de cookies" (CookieJar)
+    const jar = new CookieJar();
+    const clienteWeb = wrapper(axios.create({
+      jar,
       httpsAgent: new https.Agent({ rejectUnauthorized: false }),
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       }
-    });
+    }));
 
+    // Hacemos la petición con nuestro nuevo cliente
+    const response = await clienteWeb.get(saihUrl);
     const html = response.data;
     const $ = cheerio.load(html);
 
