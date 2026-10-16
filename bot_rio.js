@@ -1,13 +1,12 @@
 // bot_rio.js
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; 
 
-const axios = require('axios');
 const cheerio = require('cheerio');
 const admin = require('firebase-admin');
 
 async function actualizarNivelRio() {
   try {
-    console.log("🌊 Entrando al SAIH...");
+    console.log("🌊 Entrando al SAIH con Fetch nativo...");
 
     if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
       throw new Error("La variable de entorno FIREBASE_SERVICE_ACCOUNT no está definida.");
@@ -28,26 +27,29 @@ async function actualizarNivelRio() {
     const db = admin.database();
     const saihUrl = 'https://saih.chminosil.es/index.php?url=/datos/ficha/estacion:N010/area:HID'; 
 
-    const response = await axios.get(saihUrl, {
+    // Usamos fetch nativo, que maneja las redirecciones de forma mucho más natural
+    const response = await fetch(saihUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Cookie': 'PHPSESSID=sesion_falsa_bot_12345; acepta_cookies=1'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'es-ES,es;q=0.8,en-US;q=0.5,en;q=0.3'
       }
     });
 
-    const $ = cheerio.load(response.data);
+    if (!response.ok) {
+      throw new Error(`Error HTTP: ${response.status} ${response.statusText}`);
+    }
+
+    const html = await response.text();
+    const $ = cheerio.load(html);
     
     let nivelExtraido = null;
     let textoLeido = "";
 
-    // Escaneamos todas las filas de la página buscando las palabras clave
     $('tr').each((index, element) => {
       const celdas = $(element).find('td');
-      
       if (celdas.length >= 4) {
         const descripcion = $(celdas[0]).text().toLowerCase();
-        
-        // Buscamos la fila que tenga "nivel", "miño" y "ourense" pero que NO sea la del nivel del mar
         if (descripcion.includes("nivel") && descripcion.includes("miño") && descripcion.includes("ourense") && !descripcion.includes("mar")) {
           textoLeido = $(celdas[3]).text().trim();
           nivelExtraido = parseFloat(textoLeido.replace(',', '.'));
@@ -56,7 +58,6 @@ async function actualizarNivelRio() {
     });
 
     if (nivelExtraido === null || isNaN(nivelExtraido)) {
-      console.log("⚠️ HTML recibido (título):", $('title').text());
       throw new Error(`No se encontró el dato numérico. Último texto leído: "${textoLeido}"`);
     }
 
