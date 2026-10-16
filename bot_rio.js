@@ -1,15 +1,13 @@
 // bot_rio.js
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; // Ignora los certificados a nivel global
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; // Ignora el error de certificado
 
 const axios = require('axios');
 const cheerio = require('cheerio');
 const admin = require('firebase-admin');
-const { wrapper } = require('axios-cookiejar-support');
-const { CookieJar } = require('tough-cookie');
 
 async function actualizarNivelRio() {
   try {
-    console.log("🌊 Iniciando lectura del SAIH con soporte de cookies...");
+    console.log("🌊 Iniciando lectura del SAIH con inyección de sesión...");
 
     if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
       throw new Error("La variable de entorno FIREBASE_SERVICE_ACCOUNT no está definida.");
@@ -30,16 +28,14 @@ async function actualizarNivelRio() {
     const db = admin.database();
     const saihUrl = 'https://saih.chminosil.es/index.php?url=/datos/ficha/estacion:N010/area:HID'; 
 
-    const jar = new CookieJar();
-    // Ya no usamos httpsAgent aquí porque choca con el wrapper de cookies
-    const clienteWeb = wrapper(axios.create({
-      jar,
+    // Hacemos la petición inyectando una cookie falsa para evitar el bucle de redirecciones
+    const response = await axios.get(saihUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Cookie': 'PHPSESSID=sesion_falsa_bot_12345; acepta_cookies=1'
       }
-    }));
+    });
 
-    const response = await clienteWeb.get(saihUrl);
     const html = response.data;
     const $ = cheerio.load(html);
 
