@@ -1,8 +1,9 @@
 // bot_rio.js
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; // Ignora los certificados a nivel global
+
 const axios = require('axios');
 const cheerio = require('cheerio');
 const admin = require('firebase-admin');
-const https = require('https');
 const { wrapper } = require('axios-cookiejar-support');
 const { CookieJar } = require('tough-cookie');
 
@@ -29,17 +30,15 @@ async function actualizarNivelRio() {
     const db = admin.database();
     const saihUrl = 'https://saih.chminosil.es/index.php?url=/datos/ficha/estacion:N010/area:HID'; 
 
-    // Configuramos el cliente web con el "tarro de cookies" (CookieJar)
     const jar = new CookieJar();
+    // Ya no usamos httpsAgent aquí porque choca con el wrapper de cookies
     const clienteWeb = wrapper(axios.create({
       jar,
-      httpsAgent: new https.Agent({ rejectUnauthorized: false }),
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       }
     }));
 
-    // Hacemos la petición con nuestro nuevo cliente
     const response = await clienteWeb.get(saihUrl);
     const html = response.data;
     const $ = cheerio.load(html);
