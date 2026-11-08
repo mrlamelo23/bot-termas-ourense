@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estado Termas Públicas Ourense</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-database-compat.js"></script>
+</head>
+<body class="bg-blue-50 text-gray-800 min-h-screen">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCFPHf2FNDh7rv2xyFef3x2LNM_gPAkyb0",
+            authDomain: "termas-ourense-77efb.firebaseapp.com",
+            databaseURL: "https://termas-ourense-77efb-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "termas-ourense-77efb",
+            storageBucket: "termas-ourense-77efb.firebasestorage.app",
+            messagingSenderId: "792353734190",
+            appId: "1:792353734190:web:303bf00f22c62eecfaa9bf"
+        };
+        
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const database = firebase.database();
+
+        function TermasApp() {
+            const [nivelRio, setNivelRio] = useState(1.5);
+            const [alerta, setAlerta] = useState(false);
+            const [modalAbierto, setModalAbierto] = useState(false);
+            const [termaSeleccionada, setTermaSeleccionada] = useState("");
+            const [estadoReporte, setEstadoReporte] = useState("");
+            
+            const [isAdmin, setIsAdmin] = useState(false);
+            const [reportes, setReportes] = useState({});
+            const [estadoOficial, setEstadoOficial] = useState({});
+
+            useEffect(() => {
+                const rioRef = database.ref('rio/nivel');
+                rioRef.on('value', (snapshot) => {
+                    if (snapshot.exists()) setNivelRio(snapshot.val());
+                });
+
+                const reportesRef = database.ref('reportes');
+                reportesRef.on('value', (snapshot) => {
+                    if (snapshot.exists()) {
+                        setReportes(snapshot.val());
+                    } else {
+                        setReportes({});
+                    }
+                });
+
+                const estadosRef = database.ref('estados_termas');
+                estadosRef.on('value', (snapshot) => {
+                    if (snapshot.exists()) {
+                        setEstadoOficial(snapshot.val());
+                    } else {
+                        setEstadoOficial({});
+                    }
+                });
+
+                return () => {
+                    rioRef.off();
+                    reportesRef.off();
+                    estadosRef.off();
+                };
+            }, []);
+
+            useEffect(() => {
+                setAlerta(nivelRio >= 2.0);
+            }, [nivelRio]);
+
+            const cambiarNivel = (e) => database.ref('rio/nivel').set(parseFloat(e.target.value));
+
+            const enviarReporte = () => {
+                if (!estadoReporte) return alert("Selecciona un estado primero");
+                
+                const nuevoReporteRef = database.ref('reportes').push();
+                nuevoReporteRef.set({
+                    terma: termaSeleccionada,
+                    estado: estadoReporte,
+                    fecha: new Date().toLocaleString()
+                });
+
+                alert("¡Gracias! Reporte enviado al administrador.");
+                setModalAbierto(false);
+                setEstadoReporte("");
+            };
+
+            const loginAdmin = () => {
+                const pass = prompt("Contraseña de administrador:");
+                if (pass === "admin123") {
+                    setIsAdmin(true);
+                } else if (pass !== null) {
+                    alert("Contraseña incorrecta");
+                }
+            };
+
+            const eliminarReporte = (id) => {
+                database.ref('reportes/' + id).remove();
+            };
+
+            const aprobarReporte = (id, reporte) => {
+                database.ref('estados_termas/' + reporte.terma).set(reporte.estado);
+                eliminarReporte(id);
+            };
+
+            const renderEtiqueta = (nombreTerma) => {
+                const estado = estadoOficial[nombreTerma] || "abiertas";
+
+                switch(estado) {
+                    case "abiertas":
+                        return <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-bold border border-green-200">🟢 ABIERTAS</span>;
+                    case "inundadas":
+                        return <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-bold border border-blue-200">🌊 INUNDADAS</span>;
+                    case "vacias":
+                        return <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm font-bold border border-yellow-200">🪣 VACÍAS</span>;
+                    case "cerradas":
+                        return <span className="px-3 py-1 bg-gray-100 text-gray-800 rounded-full text-sm font-bold border border-gray-200">🔴 CERRADAS</span>;
+                    default:
+                        return <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-bold border border-green-200">🟢 ABIERTAS</span>;
+                }
+            };
+
+            return (
+                <div className="max-w-4xl mx-auto p-4 py-8">
+                    <div className="text-center mb-8">
+                        <h1 className="text-4xl font-bold text-blue-900 mb-2">Termas Públicas de Ourense</h1>
+                        <p className="text-gray-600">Consulta el estado en tiempo real y colabora</p>
+                    </div>
+
+                    {/* INDICADOR DEL NIVEL DEL RÍO (Visible para todos los usuarios) */}
+                    <div className="bg-white p-5 rounded-xl shadow-md border border-blue-100 mb-6 flex justify-between items-center">
+                        <div>
+                            <h2 className="text-lg font-bold text-blue-900">Nivel del Río Miño</h2>
+                            <p className="text-xs text-gray-500">Información en tiempo real</p>
+                        </div>
+                        <div className="text-right">
+                            <span className={`text-3xl font-extrabold ${alerta ? 'text-red-600' : 'text-blue-500'}`}>
+                                {nivelRio} <span className="text-xl">m</span>
+                            </span>
+                        </div>
+                    </div>
+
+                    {isAdmin && (
+                        <div className="bg-slate-800 p-6 rounded-xl shadow-lg mb-8 text-white border-2 border-yellow-400">
+                            <div className="flex justify-between items-center mb-4">
+                                <h2 className="text-xl font-bold text-yellow-400">🛡️ Panel de Administrador</h2>
+                                <button onClick={() => setIsAdmin(false)} className="text-sm underline text-gray-400">Cerrar Sesión</button>
+                            </div>
+                            
+                            <h3 className="font-semibold mb-2">Reportes pendientes de usuarios:</h3>
+                            {Object.keys(reportes).length === 0 ? (
+                                <p className="text-gray-400 text-sm">No hay reportes nuevos.</p>
+                            ) : (
+                                <div className="space-y-3">
+                                    {Object.entries(reportes).map(([id, rep]) => (
+                                        <div key={id} className="bg-slate-700 p-3 rounded-lg flex justify-between items-center">
+                                            <div className="text-sm">
+                                                <span className="font-bold text-blue-300">{rep.terma}</span> 
+                                                <span className="mx-2 text-gray-400">➔</span> 
+                                                <span className="bg-gray-800 px-2 py-1 rounded text-yellow-400 font-bold uppercase">{rep.estado}</span>
+                                                <div className="text-xs text-gray-400 mt-1">{rep.fecha}</div>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button onClick={() => aprobarReporte(id, rep)} className="bg-green-600 hover:bg-green-500 px-3 py-1 rounded text-sm font-bold">Aprobar</button>
+                                                <button onClick={() => eliminarReporte(id)} className="bg-red-600 hover:bg-red-500 px-3 py-1 rounded text-sm">Rechazar</button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            <div className="mt-8 pt-6 border-t border-slate-600">
+                                <h3 className="font-semibold mb-4">Control Remoto del Río Miño</h3>
+                                <div className="flex items-center gap-4">
+                                    <input type="range" min="0" max="7" step="0.1" value={nivelRio} onChange={cambiarNivel} className="flex-1" />
+                                    <span className="font-bold text-xl w-16 text-right">{nivelRio} m</span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {alerta && (
+                        <div className="mb-8 p-4 bg-red-100 border-l-4 border-red-600 text-red-800 rounded animate-pulse shadow-md">
+                            <strong>⚠️ ALERTA DE INUNDACIÓN:</strong> El río Miño se encuentra a {nivelRio}m. Accesos a las termas en riesgo.
+                        </div>
+                    )}
+
+                    <div className="grid md:grid-cols-2 gap-8">
+                        {/* A Chavasqueira */}
+                        <div className="bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col">
+                            <img src="Chavasqueira-nocturna_opt.jpg" alt="A Chavasqueira" className="w-full h-56 object-cover" />
+                            <div className="p-6 flex flex-col flex-grow">
+                                <div className="flex justify-between items-start mb-4">
+                                    <h3 className="text-2xl font-bold text-gray-800">A Chavasqueira</h3>
+                                    {renderEtiqueta("A Chavasqueira")}
+                                </div>
+                                <div className="space-y-3 mb-6 text-sm text-gray-600 flex-grow">
+                                    <p>🌡️ <strong>Temperatura:</strong> 43°C - 46°C</p>
+                                    <p>💧 <strong>Tipo de agua:</strong> Bicarbonatada, fluorada y litínica.</p>
+                                    <p>🩺 <strong>Propiedades:</strong> Ideales para reumatismo, artritis y afecciones de la piel.</p>
+                                    <p>🕒 <strong>Horario:</strong> Abierto 24h (zona pública gratuita).</p>
+                                </div>
+                                <button onClick={() => { setTermaSeleccionada('A Chavasqueira'); setModalAbierto(true); }} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg mt-auto">
+                                    Reportar Estado
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Muíño da Veiga */}
+                        <div className="bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col">
+                            <img src="DSC_1309.jpg" alt="Muíño da Veiga" className="w-full h-56 object-cover" />
+                            <div className="p-6 flex flex-col flex-grow">
+                                <div className="flex justify-between items-start mb-4">
+                                    <h3 className="text-2xl font-bold text-gray-800">Muíño da Veiga</h3>
+                                    {renderEtiqueta("Muíño da Veiga")}
+                                </div>
+                                <div className="space-y-3 mb-6 text-sm text-gray-600 flex-grow">
+                                    <p>🌡️ <strong>Temperatura:</strong> 65°C - 72°C (en manantial)</p>
+                                    <p>💧 <strong>Tipo de agua:</strong> Alcalinas, silicatadas y fluoradas.</p>
+                                    <p>🩺 <strong>Propiedades:</strong> Beneficiosas para problemas de piel (dermatitis) y afecciones articulares.</p>
+                                    <p>🕒 <strong>Horario:</strong> Abierto 24h (zona pública gratuita).</p>
+                                </div>
+                                <button onClick={() => { setTermaSeleccionada('Muíño da Veiga'); setModalAbierto(true); }} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg mt-auto">
+                                    Reportar Estado
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {!isAdmin && (
+                        <div className="text-center mt-12 mb-4">
+                            <button onClick={loginAdmin} className="text-xs text-gray-300 hover:text-gray-500">Acceso Administrador</button>
+                        </div>
+                    )}
+
+                    {modalAbierto && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                            <div className="bg-white rounded-xl max-w-md w-full p-6">
+                                <h3 className="text-xl font-bold mb-4">Reportar estado: {termaSeleccionada}</h3>
+                                <select value={estadoReporte} onChange={(e) => setEstadoReporte(e.target.value)} className="w-full p-3 border rounded-lg mb-6 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <option value="">Selecciona el estado visualizado...</option>
+                                    <option value="abiertas">🟢 Abiertas y accesibles</option>
+                                    <option value="inundadas">🌊 Inundadas por el río</option>
+                                    <option value="vacias">🪣 Vacías (sin agua)</option>
+                                    <option value="cerradas">🔴 Cerradas / Precintadas</option>
+                                </select>
+                                <div className="flex gap-3">
+                                    <button onClick={() => setModalAbierto(false)} className="flex-1 bg-gray-200 hover:bg-gray-300 font-semibold py-2 rounded-lg">Cancelar</button>
+                                    <button onClick={enviarReporte} className="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-2 rounded-lg">Enviar Reporte</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<TermasApp />);
+    </script>
+</body>
+</html>
